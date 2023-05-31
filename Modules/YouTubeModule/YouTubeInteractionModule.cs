@@ -21,7 +21,6 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
     {
         private static IAudioClient? _audioClient;
         private static bool _isPlaying = false;
-        private static ulong? _botRoomId;
         private readonly MusicQueueService _musicQueueService;
         private readonly SelectMenuHandler _selectMenuHandler;
 
@@ -40,17 +39,19 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
                 await LeaveFromRoom(); // Рекурсивно вызываем сам метод
                 return;
             }
-            _botRoomId = null;
-            await _audioClient.StopAsync();
+            if (_audioClient is not null)
+                await _audioClient.StopAsync();
+            _audioClient = null;
         }
 
         /// <summary> Обрабатывает команду "play_youtube" для воспроизведения музыки с YouTube. </summary>
         [SlashCommand("play", "Введите url видео для воспроизведения музыки с YouTube")]
         public async Task PlayYouTubeSong(string youtubeUrl)
         {
+            await Context.Interaction.DeferAsync();
             if (_isPlaying is true)
             {
-                await RespondAsync($"Э сука! Бот уже играет музыку в комнате");
+                await FollowupAsync($"Э сука! Бот уже играет музыку в комнате");
                 return;
             }
             if (_musicQueueService.IsEmpty()) _musicQueueService.Enqueue(youtubeUrl);
@@ -61,13 +62,9 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             SocketGuildUser user = (SocketGuildUser)Context.User;
             SocketVoiceChannel voiceChanel = user.VoiceChannel;
             _audioClient = await user.VoiceChannel.ConnectAsync();
-            if (_botRoomId == null)
-            {
-                _botRoomId = voiceChanel.Id;
-                await Console.Out.WriteLineAsync($"Bot in voice room : {_botRoomId}");
-            }
 
             _isPlaying = true;
+            await FollowupAsync("Попер дрипчик!!!");
 
             // Получение аудио потока с помощью библиотеки YoutubeExplode
             YoutubeClient youTubeClient = new YoutubeClient();
@@ -94,7 +91,6 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
 
             try
             {
-                await RespondAsync("Попер дрипчик!!!");
                 // Воспроизведение аудио в голосовом канале
                 var audioOutStream = _audioClient.CreatePCMStream(AudioApplication.Voice);
                 await audioOutStream.WriteAsync(memoryStream.ToArray(), 0, (int)memoryStream.Length);
@@ -119,13 +115,15 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         [SlashCommand("stop", "Остановить текущий трек")]
         public async Task StopYouTubeSong()
         {
+            await Context.Interaction.DeferAsync();
             if (_audioClient != null && _audioClient.ConnectionState == ConnectionState.Connected)
             {
+                await FollowupAsync($"{Context.User.Username} убил весь вайб...");
                 // Остановить воспроизведение
                 await _audioClient.StopAsync();
 
                 // Очистить состояние и ресурсы
-                _audioClient.Dispose();
+                _audioClient?.Dispose();
                 _audioClient = null;
             }
             else

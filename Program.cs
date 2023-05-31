@@ -21,7 +21,10 @@ public class Program
                 services.AddSingleton<MusicQueueService>();
                 services.AddSingleton<SelectMenuHandler>();
                 // Сервис для работы с Discord API и взаимодействия с Discord-сервером.
-                services.AddSingleton<DiscordSocketClient>();
+                services.AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
+                {
+                    UseInteractionSnowflakeDate = false
+                }));
                 // Сервис для обработки взаимодействий (slash-команд) с ботом.
                 services.AddSingleton<InteractionService>();
                 // Зарегистрированный сервис, который будет обрабатывать взаимодействия с ботом и
