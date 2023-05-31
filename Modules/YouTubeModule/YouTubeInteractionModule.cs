@@ -50,7 +50,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         {
             if (_isPlaying is true)
             {
-                await Context.Channel.SendMessageAsync($"Э сука! Бот уже играет музыку в комнате");
+                await RespondAsync($"Э сука! Бот уже играет музыку в комнате");
                 return;
             }
             if (_musicQueueService.IsEmpty()) _musicQueueService.Enqueue(youtubeUrl);
@@ -77,19 +77,24 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
 
             // Преобразование аудио потока в формат, поддерживаемый Discord, с помощью инструмента ffmpeg
             var memoryStream = new MemoryStream();
+#if DEBUG
+
+            await Cli.Wrap(@$"D:\ffmpeg\bin\ffmpeg")
+                .WithArguments(" -hide_banner -loglevel panic -i pipe:0 -ac 2 -f s16le -ar 48000 pipe:1")
+                .WithStandardInputPipe(PipeSource.FromStream(stream))
+                .WithStandardOutputPipe(PipeTarget.ToStream(memoryStream))
+                .ExecuteAsync();
+#else
             await Cli.Wrap("ffmpeg")
                 .WithArguments(" -hide_banner -loglevel panic -i pipe:0 -ac 2 -f s16le -ar 48000 pipe:1")
                 .WithStandardInputPipe(PipeSource.FromStream(stream))
                 .WithStandardOutputPipe(PipeTarget.ToStream(memoryStream))
                 .ExecuteAsync();
-            /*await Cli.Wrap(@$"D:\ffmpeg\bin\ffmpeg")
-                .WithArguments(" -hide_banner -loglevel panic -i pipe:0 -ac 2 -f s16le -ar 48000 pipe:1")
-                .WithStandardInputPipe(PipeSource.FromStream(stream))
-                .WithStandardOutputPipe(PipeTarget.ToStream(memoryStream))
-                .ExecuteAsync();*/
+#endif
 
             try
             {
+                await RespondAsync("Попер дрипчик!!!");
                 // Воспроизведение аудио в голосовом канале
                 var audioOutStream = _audioClient.CreatePCMStream(AudioApplication.Voice);
                 await audioOutStream.WriteAsync(memoryStream.ToArray(), 0, (int)memoryStream.Length);
@@ -107,8 +112,6 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
                     // Остановка воспроизведения и очистка ресурсов по завершении
                     await LeaveFromRoom();
                 }
-
-                //await LeaveFromRoom();
             }
         }
 
@@ -116,8 +119,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         [SlashCommand("stop", "Остановить текущий трек")]
         public async Task StopYouTubeSong()
         {
-            if (_audioClient != null
-                && _audioClient.ConnectionState == ConnectionState.Connected)
+            if (_audioClient != null && _audioClient.ConnectionState == ConnectionState.Connected)
             {
                 // Остановить воспроизведение
                 await _audioClient.StopAsync();
@@ -129,7 +131,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             else
             {
                 // Бот не воспроизводит музыку
-                await Context.Channel.SendMessageAsync("Бот не воспроизводит музыку!");
+                await RespondAsync("Бот не воспроизводит музыку!");
             }
         }
 
@@ -138,7 +140,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         {
             if (_isPlaying is false)
             {
-                await Context.Channel.SendMessageAsync("Какая впизду очередь сука! Бот сейчас не проигрывает музыку уебан!");
+                await RespondAsync("Какая впизду очередь сука! Бот сейчас не проигрывает музыку уебан!");
                 return;
             }
             StringBuilder sb = new StringBuilder();
