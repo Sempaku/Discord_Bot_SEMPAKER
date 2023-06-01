@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DotNet.Docker.Modules.YouTubeModule
+namespace DotNet.Docker.Service
 {
     public class MusicQueueService
     {

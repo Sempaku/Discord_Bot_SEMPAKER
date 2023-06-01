@@ -1,7 +1,6 @@
 ﻿using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot_SEMPAKER.Service;
-using DotNet.Docker.Modules.YouTubeModule;
 using DotNet.Docker.Service;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -25,6 +24,7 @@ public class Program
                 {
                     UseInteractionSnowflakeDate = false
                 }));
+
                 // Сервис для обработки взаимодействий (slash-команд) с ботом.
                 services.AddSingleton<InteractionService>();
                 // Зарегистрированный сервис, который будет обрабатывать взаимодействия с ботом и

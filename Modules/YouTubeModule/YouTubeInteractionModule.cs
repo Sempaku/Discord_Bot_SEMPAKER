@@ -5,7 +5,6 @@ using Discord.Audio;
 using Discord.Interactions;
 using Discord.Rest;
 using Discord.WebSocket;
-using DotNet.Docker.Modules.YouTubeModule;
 using DotNet.Docker.Service;
 using System.Diagnostics;
 using System.Text;
@@ -46,29 +45,37 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
 
         /// <summary> Обрабатывает команду "play_youtube" для воспроизведения музыки с YouTube. </summary>
         [SlashCommand("play", "Введите url видео для воспроизведения музыки с YouTube")]
-        public async Task PlayYouTubeSong(string youtubeUrl)
+        public async Task PlayYouTubeSong(string youtubeUrl, bool isRecurseHandle = false)
         {
-            await Context.Interaction.DeferAsync();
+            if (isRecurseHandle is false)
+                await Context.Interaction.DeferAsync();
+
             if (_isPlaying is true)
             {
                 await FollowupAsync($"Э сука! Бот уже играет музыку в комнате");
                 return;
             }
-            if (_musicQueueService.IsEmpty()) _musicQueueService.Enqueue(youtubeUrl);
 
             // проверка : находится ли бот в комнате если он уже в комнате, то он не будет
             // переподключаться в другую пока не выйдет из текущей
 
             SocketGuildUser user = (SocketGuildUser)Context.User;
             SocketVoiceChannel voiceChanel = user.VoiceChannel;
+            if (voiceChanel is null)
+            {
+                if (isRecurseHandle is false)
+                    await FollowupAsync("Ты дебил... В комнату блять зайди!");
+                return;
+            }
             _audioClient = await user.VoiceChannel.ConnectAsync();
 
             _isPlaying = true;
-            await FollowupAsync("Попер дрипчик!!!");
+            if (isRecurseHandle is false)
+                await FollowupAsync("Попер дрипчик!!!");
 
             // Получение аудио потока с помощью библиотеки YoutubeExplode
             YoutubeClient youTubeClient = new YoutubeClient();
-            StreamManifest streamManifest = await youTubeClient.Videos.Streams.GetManifestAsync(_musicQueueService.Dequeue());
+            StreamManifest streamManifest = await youTubeClient.Videos.Streams.GetManifestAsync(youtubeUrl);
             IStreamInfo streamInfo = streamManifest.GetAudioOnlyStreams().GetWithHighestBitrate();
             Stream stream = await youTubeClient.Videos.Streams.GetAsync(streamInfo);
 
@@ -101,7 +108,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
                 _isPlaying = false;
                 if (!_musicQueueService.IsEmpty())
                 {
-                    await PlayYouTubeSong(_musicQueueService.Dequeue());
+                    await PlayYouTubeSong(_musicQueueService.Dequeue(), true);
                 }
                 else
                 {
@@ -112,7 +119,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         }
 
         /// <summary> Обрабатывает команду "stop_youtube" для остановки текущего трека. </summary>
-        [SlashCommand("stop", "Остановить текущий трек")]
+        [SlashCommand("stop", "Выгнать ботика из голосового канала")]
         public async Task StopYouTubeSong()
         {
             await Context.Interaction.DeferAsync();

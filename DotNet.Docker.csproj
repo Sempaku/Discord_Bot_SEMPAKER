@@ -21,6 +21,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="7.0.0" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.19.1" />
     <PackageReference Include="Opus" Version="1.0.0" />
+    <PackageReference Include="xunit" Version="2.4.2" />
     <PackageReference Include="YoutubeExplode" Version="6.2.15" />
   </ItemGroup>
 

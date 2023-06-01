@@ -69,6 +69,7 @@ namespace DiscordBot_SEMPAKER.Service
         /// <param name="interaction"> Входящее взаимодействие. </param>
         private async Task HandleInteractions(SocketInteraction interaction)
         {
+            //await interaction.DeferAsync();
             try
             {
                 var context = new SocketInteractionContext(_client, interaction);
