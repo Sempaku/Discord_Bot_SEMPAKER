@@ -52,7 +52,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
 
             if (_isPlaying is true)
             {
-                await FollowupAsync($"Э сука! Бот уже играет музыку в комнате");
+                await FollowupAsync($"Бот уже играет музыку в комнате");
                 return;
             }
 
@@ -64,7 +64,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             if (voiceChanel is null)
             {
                 if (isRecurseHandle is false)
-                    await FollowupAsync("Ты дебил... В комнату блять зайди!");
+                    await FollowupAsync("Войдите в комнату!");
                 return;
             }
             _audioClient = await user.VoiceChannel.ConnectAsync();
@@ -145,7 +145,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         {
             if (_isPlaying is false)
             {
-                await RespondAsync("Какая впизду очередь сука! Бот сейчас не проигрывает музыку уебан!");
+                await RespondAsync("Бот сейчас не проигрывает музыку!");
                 return;
             }
             StringBuilder sb = new StringBuilder();

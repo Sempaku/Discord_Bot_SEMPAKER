@@ -27,6 +27,7 @@ namespace DotNet.Docker.Service
 
         public void RemoveFromQueue(string musicUrl)
         {
+            // todo : удаляет все одинаковые url, а надо чтобы первый попавшийся!!
             musicUrlQueue = new Queue<string>(musicUrlQueue.Where(url => url != musicUrl));
         }
 
