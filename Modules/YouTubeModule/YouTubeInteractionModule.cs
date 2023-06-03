@@ -207,6 +207,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         {
             if (_audioClient is not null)
             {
+                _isPlaying = false;
                 _musicQueueService.ClearQueue();
                 await _audioClient.StopAsync();
                 await RespondAsync("Бот покинул голосовой канал. Очередь очищена.");
