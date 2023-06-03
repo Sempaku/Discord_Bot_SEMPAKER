@@ -1,12 +1,9 @@
-﻿using AngleSharp.Dom;
-using CliWrap;
+﻿using CliWrap;
 using Discord;
 using Discord.Audio;
 using Discord.Interactions;
-using Discord.Rest;
 using Discord.WebSocket;
 using DotNet.Docker.Service;
-using System.Diagnostics;
 using System.Text;
 using YoutubeExplode;
 using YoutubeExplode.Videos;
@@ -23,10 +20,13 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         private readonly MusicQueueService _musicQueueService;
         private readonly SelectMenuHandler _selectMenuHandler;
 
+        private readonly YoutubeClient _youTubeClient;
+
         public YouTubeInteractionModule(MusicQueueService musicQueueService, SelectMenuHandler selectMenuHandler)
         {
             _musicQueueService = musicQueueService;
             _selectMenuHandler = selectMenuHandler;
+            _youTubeClient = new YoutubeClient();
         }
 
         public async Task LeaveFromRoom()
@@ -119,8 +119,8 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         }
 
         /// <summary> Обрабатывает команду "stop_youtube" для остановки текущего трека. </summary>
-        [SlashCommand("stop", "Выгнать ботика из голосового канала")]
-        public async Task StopYouTubeSong()
+        [SlashCommand("skip", "Пропускает текущую аудиозапись")]
+        public async Task SkipYouTubeSong()
         {
             await Context.Interaction.DeferAsync();
             if (_audioClient != null && _audioClient.ConnectionState == ConnectionState.Connected)
@@ -148,19 +148,14 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
                 await RespondAsync("Бот сейчас не проигрывает музыку!");
                 return;
             }
+
             StringBuilder sb = new StringBuilder();
             _musicQueueService.Enqueue(url);
 
-            YoutubeClient youTubeClient = new YoutubeClient();
-            Video video = await youTubeClient.Videos.GetAsync(url);
+            Video video = await _youTubeClient.Videos.GetAsync(url);
             sb.Append($"Видео : {video.Title} [{video.Duration}] добавлено в очередь\n\n");
-            sb.Append("Очередь: \n");
-            foreach (var videoUrl in _musicQueueService.GetMusicUrlQueue())
-            {
-                var videoInfo = await youTubeClient.Videos.GetAsync(videoUrl);
-                sb.Append($"{videoInfo.Title} [{videoInfo.Duration}]\n");
-            }
-            await RespondAsync(sb.ToString());
+            StringBuilder sb2 = await PrintQueue();
+            await RespondAsync(sb.Append(sb2).ToString());
         }
 
         [SlashCommand("remove", "Удаляет музыку из очереди", false, RunMode.Async)]
@@ -168,7 +163,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         {
             if (_musicQueueService.IsEmpty())
             {
-                await RespondAsync("Еблан! В очеререди 0 треков! Хули ты там удалять то собрался?");
+                await RespondAsync("Очередь пустая!");
                 return;
             }
 
@@ -177,26 +172,83 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
                 .WithCustomId("deletetrack")
                 .WithMinValues(1)
                 .WithMaxValues(1);
-            _selectMenuHandler.AddHandler(selectMenuBuilder.CustomId, async component => await DeleteTrack(component));
+            _selectMenuHandler.AddHandler(selectMenuBuilder.CustomId, async component =>
+            {
+                try
+                {
+                    var selectedValue = component.Data.Values.First();
+                    var videoUrl = selectedValue.Split("!~!").First();
+                    _musicQueueService.RemoveFromQueue(videoUrl);
+                }
+                finally
+                {
+                    StringBuilder queue = await PrintQueue();
+                    await component.RespondAsync($"Трек удален из очереди...\n" + queue.ToString());
+                }
+            });
 
             YoutubeClient youTubeClient = new YoutubeClient();
-            foreach (var videoUrl in _musicQueueService.GetMusicUrlQueue())
+            foreach (var videoUrl in _musicQueueService.GetQueue())
             {
                 var videoInfo = await youTubeClient.Videos.GetAsync(videoUrl);
-                selectMenuBuilder.AddOption($"{videoInfo.Title} [{videoInfo.Duration}]", videoUrl);
+                var uniqueValue = $"{videoUrl}!~!{Guid.NewGuid()}";
+                selectMenuBuilder.AddOption($"{videoInfo.Title} [{videoInfo.Duration}]", uniqueValue);
             }
 
-            var componentBuilder = new ComponentBuilder()
+            ComponentBuilder componentBuilder = new ComponentBuilder()
                 .WithSelectMenu(selectMenuBuilder);
-
+            MessageComponent deleteComponent = componentBuilder.Build();
             // Отправляем сообщение с Select Menu
-            await RespondAsync("Какой трек удалять?", components: componentBuilder.Build());
+            await RespondAsync("Какой трек удалять?", components: deleteComponent);
         }
 
-        private async Task DeleteTrack(SocketMessageComponent args)
+        [SlashCommand("leave", "Бот покидает голосовой канал")]
+        public async Task LeaveFromVoiceRoom()
         {
-            _musicQueueService.RemoveFromQueue(args.Data.Values.First());
-            await args.RespondAsync($"Трек удален из очереди...");
+            if (_audioClient is not null)
+            {
+                _musicQueueService.ClearQueue();
+                await _audioClient.StopAsync();
+                await RespondAsync("Бот покинул голосовой канал. Очередь очищена.");
+            }
+            else
+            {
+                await RespondAsync("Бот не находится в голосовом канале");
+            }
+        }
+
+        [SlashCommand("check-queue", "Выводит очередь воспроизведения")]
+        public async Task CheckQueue()
+        {
+            StringBuilder queue = await PrintQueue();
+            await RespondAsync(queue.ToString());
+        }
+
+        [SlashCommand("clear-queue", "Очищается очередь воспроизведения")]
+        public async Task ClearQueue()
+        {
+            _musicQueueService.ClearQueue();
+            await RespondAsync("Очередь успешно очищена");
+        }
+
+        private async Task<StringBuilder> PrintQueue()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.Append("Очередь: \n");
+            string[] musicUrlQueue = _musicQueueService.GetQueue().ToArray();
+
+            for (int i = 0; i < musicUrlQueue.Length; i++)
+            {
+                string videoUrl = musicUrlQueue[i];
+                var videoInfo = await _youTubeClient.Videos.GetAsync(videoUrl);
+                sb.Append($"{i + 1} - {videoInfo.Title} [{videoInfo.Duration}]\n");
+            }
+
+            return sb;
+        }
+
+        private async Task ValidateYouTubeUrl(string url)
+        {
         }
     }
 }

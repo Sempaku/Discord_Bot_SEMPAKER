@@ -1,13 +1,10 @@
 ﻿using Discord;
-using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot_SEMPAKER.Utils;
 using DotNet.Docker.Service;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.ComponentModel;
-using System.Globalization;
 using System.Reflection;
 
 namespace DiscordBot_SEMPAKER.Service
@@ -69,7 +66,6 @@ namespace DiscordBot_SEMPAKER.Service
         /// <param name="interaction"> Входящее взаимодействие. </param>
         private async Task HandleInteractions(SocketInteraction interaction)
         {
-            //await interaction.DeferAsync();
             try
             {
                 var context = new SocketInteractionContext(_client, interaction);

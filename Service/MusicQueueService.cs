@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace DotNet.Docker.Service
+﻿namespace DotNet.Docker.Service
 {
     public class MusicQueueService
     {
@@ -27,11 +21,17 @@ namespace DotNet.Docker.Service
 
         public void RemoveFromQueue(string musicUrl)
         {
-            // todo : удаляет все одинаковые url, а надо чтобы первый попавшийся!!
-            musicUrlQueue = new Queue<string>(musicUrlQueue.Where(url => url != musicUrl));
+            // Найти индекс первого вхождения элемента с заданным названием в очереди
+            int indexToRemove = musicUrlQueue.TakeWhile(url => url != musicUrl).Count();
+
+            // Удалить элемент из очереди по найденному индексу
+            if (indexToRemove < musicUrlQueue.Count)
+            {
+                musicUrlQueue = new Queue<string>(musicUrlQueue.Where((url, index) => index != indexToRemove));
+            }
         }
 
-        public Queue<string> GetMusicUrlQueue()
+        public Queue<string> GetQueue()
         {
             return new Queue<string>(musicUrlQueue);
         }
@@ -44,6 +44,11 @@ namespace DotNet.Docker.Service
         public void SetQueue(Queue<string> queue)
         {
             musicUrlQueue = queue;
+        }
+
+        public void ClearQueue()
+        {
+            musicUrlQueue.Clear();
         }
     }
 }
