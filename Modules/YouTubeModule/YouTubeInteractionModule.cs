@@ -29,35 +29,34 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             _youTubeClient = new YoutubeClient();
         }
 
-        public async Task LeaveFromRoom()
-        {
-            if (_isPlaying)
-            {
-                // Если операция воспроизведения еще не завершена, ожидаем завершения
-                await Task.Delay(10 * 1000); // Пример задержки в 10 секунду
-                await LeaveFromRoom(); // Рекурсивно вызываем сам метод
-                return;
-            }
-            if (_audioClient is not null)
-                await _audioClient.StopAsync();
-            _audioClient = null;
-        }
-
         /// <summary> Обрабатывает команду "play_youtube" для воспроизведения музыки с YouTube. </summary>
         [SlashCommand("play", "Введите url видео для воспроизведения музыки с YouTube")]
-        public async Task PlayYouTubeSong(string youtubeUrl, bool isRecurseHandle = false)
+        public async Task PlayYouTubeSong(string url, bool isRecurseHandle = false)
         {
+            // todo: меньше 100 длина url должно быть
+            // проверка: если метод выполняется по запросу из кода, то взаимодействие не будет
+            // отложенным, и не будет выводить сообщения
             if (isRecurseHandle is false)
                 await Context.Interaction.DeferAsync();
 
+            if (url.Length > 99)
+            {
+                await FollowupAsync("Url должен быть меньше 100 знаков!");
+                return;
+            }
+
+            if (await ValidateYouTubeUrl(url) is false)
+            {
+                await FollowupAsync("Неверный url");
+                return;
+            }
+            // проверка : находится ли бот в комнате если он уже в комнате, то он не будет
+            // переподключаться в другую пока не выйдет из текущей
             if (_isPlaying is true)
             {
                 await FollowupAsync($"Бот уже играет музыку в комнате");
                 return;
             }
-
-            // проверка : находится ли бот в комнате если он уже в комнате, то он не будет
-            // переподключаться в другую пока не выйдет из текущей
 
             SocketGuildUser user = (SocketGuildUser)Context.User;
             SocketVoiceChannel voiceChanel = user.VoiceChannel;
@@ -75,7 +74,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
 
             // Получение аудио потока с помощью библиотеки YoutubeExplode
             YoutubeClient youTubeClient = new YoutubeClient();
-            StreamManifest streamManifest = await youTubeClient.Videos.Streams.GetManifestAsync(youtubeUrl);
+            StreamManifest streamManifest = await youTubeClient.Videos.Streams.GetManifestAsync(url);
             IStreamInfo streamInfo = streamManifest.GetAudioOnlyStreams().GetWithHighestBitrate();
             Stream stream = await youTubeClient.Videos.Streams.GetAsync(streamInfo);
 
@@ -113,7 +112,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
                 else
                 {
                     // Остановка воспроизведения и очистка ресурсов по завершении
-                    await LeaveFromRoom();
+                    await SkipMusicInPlayMethod();
                 }
             }
         }
@@ -136,16 +135,29 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             else
             {
                 // Бот не воспроизводит музыку
-                await RespondAsync("Бот не воспроизводит музыку!");
+                await FollowupAsync("Бот не воспроизводит музыку!");
             }
         }
 
         [SlashCommand("add", "Добавляет музыку в очередь")]
         public async Task AddUrlInMusicQueue(string url)
         {
+            await Context.Interaction.DeferAsync();
+            if (url.Length > 99)
+            {
+                await FollowupAsync("Url должен быть меньше 100 знаков!");
+                return;
+            }
+
+            if (await ValidateYouTubeUrl(url) is false)
+            {
+                await FollowupAsync("Неверный url");
+                return;
+            }
+
             if (_isPlaying is false)
             {
-                await RespondAsync("Бот сейчас не проигрывает музыку!");
+                await FollowupAsync("Бот сейчас не проигрывает музыку!");
                 return;
             }
 
@@ -155,15 +167,17 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             Video video = await _youTubeClient.Videos.GetAsync(url);
             sb.Append($"Видео : {video.Title} [{video.Duration}] добавлено в очередь\n\n");
             StringBuilder sb2 = await PrintQueue();
-            await RespondAsync(sb.Append(sb2).ToString());
+            await FollowupAsync(sb.Append(sb2).ToString());
         }
 
         [SlashCommand("remove", "Удаляет музыку из очереди", false, RunMode.Async)]
         public async Task RemoveUrlFromMusicQueue()
         {
+            await Context.Interaction.DeferAsync();
+
             if (_musicQueueService.IsEmpty())
             {
-                await RespondAsync("Очередь пустая!");
+                await FollowupAsync("Очередь пустая!");
                 return;
             }
 
@@ -183,7 +197,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
                 finally
                 {
                     StringBuilder queue = await PrintQueue();
-                    await component.RespondAsync($"Трек удален из очереди...\n" + queue.ToString());
+                    await component.FollowupAsync($"Трек удален из очереди...\n" + queue.ToString());
                 }
             });
 
@@ -199,37 +213,57 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
                 .WithSelectMenu(selectMenuBuilder);
             MessageComponent deleteComponent = componentBuilder.Build();
             // Отправляем сообщение с Select Menu
-            await RespondAsync("Какой трек удалять?", components: deleteComponent);
+            await FollowupAsync("Какой трек удалять?", components: deleteComponent);
         }
 
         [SlashCommand("leave", "Бот покидает голосовой канал")]
         public async Task LeaveFromVoiceRoom()
         {
+            await Context.Interaction.DeferAsync();
+
             if (_audioClient is not null)
             {
                 _isPlaying = false;
                 _musicQueueService.ClearQueue();
                 await _audioClient.StopAsync();
-                await RespondAsync("Бот покинул голосовой канал. Очередь очищена.");
+                await FollowupAsync("Бот покинул голосовой канал. Очередь очищена.");
             }
             else
             {
-                await RespondAsync("Бот не находится в голосовом канале");
+                await FollowupAsync("Бот не находится в голосовом канале");
             }
         }
 
         [SlashCommand("check-queue", "Выводит очередь воспроизведения")]
         public async Task CheckQueue()
         {
+            await Context.Interaction.DeferAsync();
+
             StringBuilder queue = await PrintQueue();
-            await RespondAsync(queue.ToString());
+            await FollowupAsync(queue.ToString());
         }
 
         [SlashCommand("clear-queue", "Очищается очередь воспроизведения")]
         public async Task ClearQueue()
         {
+            await Context.Interaction.DeferAsync();
+
             _musicQueueService.ClearQueue();
-            await RespondAsync("Очередь успешно очищена");
+            await FollowupAsync("Очередь успешно очищена");
+        }
+
+        private async Task SkipMusicInPlayMethod()
+        {
+            if (_isPlaying)
+            {
+                // Если операция воспроизведения еще не завершена, ожидаем завершения
+                await Task.Delay(10 * 1000); // Пример задержки в 10 секунду
+                await SkipMusicInPlayMethod(); // Рекурсивно вызываем сам метод
+                return;
+            }
+            if (_audioClient is not null)
+                await _audioClient.StopAsync();
+            _audioClient = null;
         }
 
         private async Task<StringBuilder> PrintQueue()
@@ -248,8 +282,17 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             return sb;
         }
 
-        private async Task ValidateYouTubeUrl(string url)
+        private async Task<bool> ValidateYouTubeUrl(string url)
         {
+            try
+            {
+                StreamManifest streamManifest = await _youTubeClient.Videos.Streams.GetManifestAsync(url);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }
