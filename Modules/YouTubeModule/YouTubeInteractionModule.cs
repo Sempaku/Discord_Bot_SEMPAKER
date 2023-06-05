@@ -4,6 +4,7 @@ using Discord.Audio;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DotNet.Docker.Service;
+using System.Reflection.Metadata;
 using System.Text;
 using YoutubeExplode;
 using YoutubeExplode.Videos;
@@ -16,10 +17,10 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
     public class YouTubeInteractionModule : InteractionModuleBase<SocketInteractionContext>
     {
         private static IAudioClient? _audioClient;
-        private static bool _isPlaying = false;
+        private static bool _isPlaying;
+        private static bool _isRecurseHandle;
         private readonly MusicQueueService _musicQueueService;
         private readonly SelectMenuHandler _selectMenuHandler;
-
         private readonly YoutubeClient _youTubeClient;
 
         public YouTubeInteractionModule(MusicQueueService musicQueueService, SelectMenuHandler selectMenuHandler)
@@ -27,16 +28,16 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             _musicQueueService = musicQueueService;
             _selectMenuHandler = selectMenuHandler;
             _youTubeClient = new YoutubeClient();
+            _isRecurseHandle = false;
         }
 
         /// <summary> Обрабатывает команду "play_youtube" для воспроизведения музыки с YouTube. </summary>
         [SlashCommand("play", "Введите url видео для воспроизведения музыки с YouTube")]
-        public async Task PlayYouTubeSong(string url, bool isRecurseHandle = false)
+        public async Task PlayYouTubeSong(string url)
         {
-            // todo: меньше 100 длина url должно быть
             // проверка: если метод выполняется по запросу из кода, то взаимодействие не будет
             // отложенным, и не будет выводить сообщения
-            if (isRecurseHandle is false)
+            if (!_isRecurseHandle)
                 await Context.Interaction.DeferAsync();
 
             if (url.Length > 99)
@@ -45,14 +46,14 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
                 return;
             }
 
-            if (await ValidateYouTubeUrl(url) is false)
+            if (!(await ValidateYouTubeUrl(url)))
             {
                 await FollowupAsync("Неверный url");
                 return;
             }
             // проверка : находится ли бот в комнате если он уже в комнате, то он не будет
             // переподключаться в другую пока не выйдет из текущей
-            if (_isPlaying is true)
+            if (_isPlaying)
             {
                 await FollowupAsync($"Бот уже играет музыку в комнате");
                 return;
@@ -62,21 +63,20 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             SocketVoiceChannel voiceChanel = user.VoiceChannel;
             if (voiceChanel is null)
             {
-                if (isRecurseHandle is false)
+                if (_isRecurseHandle is false)
                     await FollowupAsync("Войдите в комнату!");
                 return;
             }
             _audioClient = await user.VoiceChannel.ConnectAsync();
 
             _isPlaying = true;
-            if (isRecurseHandle is false)
+            if (_isRecurseHandle is false)
                 await FollowupAsync("Попер дрипчик!!!");
 
             // Получение аудио потока с помощью библиотеки YoutubeExplode
-            YoutubeClient youTubeClient = new YoutubeClient();
-            StreamManifest streamManifest = await youTubeClient.Videos.Streams.GetManifestAsync(url);
+            StreamManifest streamManifest = await _youTubeClient.Videos.Streams.GetManifestAsync(url);
             IStreamInfo streamInfo = streamManifest.GetAudioOnlyStreams().GetWithHighestBitrate();
-            Stream stream = await youTubeClient.Videos.Streams.GetAsync(streamInfo);
+            Stream stream = await _youTubeClient.Videos.Streams.GetAsync(streamInfo);
 
             // Преобразование аудио потока в формат, поддерживаемый Discord, с помощью инструмента ffmpeg
             var memoryStream = new MemoryStream();
@@ -97,6 +97,8 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
 
             try
             {
+                Video videoInfo = await _youTubeClient.Videos.GetAsync(url);
+                await Context.Client.SetGameAsync($"{videoInfo.Author} - {videoInfo.Title}", type: ActivityType.Listening);
                 // Воспроизведение аудио в голосовом канале
                 var audioOutStream = _audioClient.CreatePCMStream(AudioApplication.Voice);
                 await audioOutStream.WriteAsync(memoryStream.ToArray(), 0, (int)memoryStream.Length);
@@ -104,15 +106,18 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             }
             finally
             {
+                _isRecurseHandle = false;
                 _isPlaying = false;
                 if (!_musicQueueService.IsEmpty())
                 {
-                    await PlayYouTubeSong(_musicQueueService.Dequeue(), true);
+                    _isRecurseHandle = true;
+                    await PlayYouTubeSong(_musicQueueService.Dequeue());
                 }
                 else
                 {
                     // Остановка воспроизведения и очистка ресурсов по завершении
-                    await SkipMusicInPlayMethod();
+                    _isRecurseHandle = true;
+                    await LeaveFromVoiceRoom();
                 }
             }
         }
@@ -122,15 +127,17 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         public async Task SkipYouTubeSong()
         {
             await Context.Interaction.DeferAsync();
-            if (_audioClient != null && _audioClient.ConnectionState == ConnectionState.Connected)
+            if (_audioClient != null
+                && _audioClient.ConnectionState == ConnectionState.Connected
+                && _isPlaying == true)
             {
                 await FollowupAsync($"{Context.User.Username} убил весь вайб...");
                 // Остановить воспроизведение
                 await _audioClient.StopAsync();
 
                 // Очистить состояние и ресурсы
-                _audioClient?.Dispose();
-                _audioClient = null;
+                /*_audioClient?.Dispose();
+                _audioClient = null;*/
             }
             else
             {
@@ -201,10 +208,9 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
                 }
             });
 
-            YoutubeClient youTubeClient = new YoutubeClient();
             foreach (var videoUrl in _musicQueueService.GetQueue())
             {
-                var videoInfo = await youTubeClient.Videos.GetAsync(videoUrl);
+                var videoInfo = await _youTubeClient.Videos.GetAsync(videoUrl);
                 var uniqueValue = $"{videoUrl}!~!{Guid.NewGuid()}";
                 selectMenuBuilder.AddOption($"{videoInfo.Title} [{videoInfo.Duration}]", uniqueValue);
             }
@@ -219,19 +225,23 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
         [SlashCommand("leave", "Бот покидает голосовой канал")]
         public async Task LeaveFromVoiceRoom()
         {
-            await Context.Interaction.DeferAsync();
+            if (!_isRecurseHandle)
+                await Context.Interaction.DeferAsync();
 
             if (_audioClient is not null)
             {
                 _isPlaying = false;
                 _musicQueueService.ClearQueue();
                 await _audioClient.StopAsync();
-                await FollowupAsync("Бот покинул голосовой канал. Очередь очищена.");
+                if (!_isRecurseHandle)
+                    await FollowupAsync("Бот покинул голосовой канал. Очередь очищена.");
             }
             else
             {
-                await FollowupAsync("Бот не находится в голосовом канале");
+                if (!_isRecurseHandle)
+                    await FollowupAsync("Бот не находится в голосовом канале");
             }
+            _isRecurseHandle = false;
         }
 
         [SlashCommand("check-queue", "Выводит очередь воспроизведения")]
@@ -252,7 +262,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             await FollowupAsync("Очередь успешно очищена");
         }
 
-        private async Task SkipMusicInPlayMethod()
+        /*private async Task SkipMusicInPlayMethod()
         {
             if (_isPlaying)
             {
@@ -264,7 +274,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             if (_audioClient is not null)
                 await _audioClient.StopAsync();
             _audioClient = null;
-        }
+        }*/
 
         private async Task<StringBuilder> PrintQueue()
         {
@@ -275,7 +285,7 @@ namespace DiscordBot_SEMPAKER.Modules.YouTubeModule
             for (int i = 0; i < musicUrlQueue.Length; i++)
             {
                 string videoUrl = musicUrlQueue[i];
-                var videoInfo = await _youTubeClient.Videos.GetAsync(videoUrl);
+                Video videoInfo = await _youTubeClient.Videos.GetAsync(videoUrl);
                 sb.Append($"{i + 1} - {videoInfo.Title} [{videoInfo.Duration}]\n");
             }
 
